@@ -1,0 +1,55 @@
+name: Front-End Build Check
+
+on:
+    pull_request:
+        types: [opened, synchronize, reopened]
+        branches:
+            - main # 또는 master 등 메인 브랜치 이름
+
+jobs:
+    build:
+        name: Build Check
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v3
+              with:
+                  # 배포 환경과 동일한 NodeJS 버전 설정
+                  node-version: "20"
+                  cache: "npm" # npm 캐시 활성화 (yarn 사용 시 'yarn'으로 변경)
+
+            - name: Install dependencies
+              run: npm ci # 더 엄격한 설치 방법 (yarn의 경우 'yarn install --frozen-lockfile')
+
+            - name: TypeScript Check
+              run: npx tsc --noEmit
+              # TypeScript 오류 발생 시 워크플로우 실패 처리
+              continue-on-error: false
+
+            - name: Check for linting errors
+              run: npm run lint
+              continue-on-error: true # 선택적: 린트 오류는 경고로만 처리
+
+            - name: Build React App
+              run: npm run build
+              env:
+                  CI: true # 경고를 오류로 처리하여 더 엄격한 빌드 수행
+                  NODE_ENV: production # 프로덕션 환경으로 설정
+
+            # 빌드 성공 여부를 PR에 코멘트로 알림 (선택사항)
+            - name: Post Build Status
+              if: github.event_name == 'pull_request'
+              uses: actions/github-script@v6
+              with:
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+                  script: |
+                      github.rest.issues.createComment({
+                        issue_number: context.issue.number,
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        body: '✅ 빌드 체크 통과: 이 PR은 성공적으로 빌드됩니다!'
+                      })
